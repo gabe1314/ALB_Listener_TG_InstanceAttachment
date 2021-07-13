@@ -1,0 +1,161 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: |
+  
+Parameters:
+  LoadBalancerName:
+    Description: Load Balancer Name
+    Type: String
+  
+  TargetGroupName:
+    Description: Target Group Name
+    Type: String
+
+  VPC:
+    Type: AWS::EC2::VPC::Id
+    Description: Choose which VPC the Application Load Balancer should be deployed to
+  
+  SecurityGroup:
+        Description: Select the Security Group to apply to the Applicaion Load Balancer
+        Type: AWS::EC2::SecurityGroup::Id
+  
+  Subnets:
+    Description: Choose which subnets the Application Load Balancer should be deployed to
+    Type: List<AWS::EC2::Subnet::Id>
+
+  Server1:
+    Description: Instance ID of the Server to be added to the Target Group
+    Type: String
+
+  Server2:
+    Description: Instance ID of the Server to be added to the Target Group
+    Type: String
+  
+  EnvironmentName:
+    Description: Name of the environment
+    Type: String
+
+  CertificateARN:
+    Description: ACM Certificate ARN
+    Type: String
+  
+Resources:
+
+  LoadBalancer:
+    Type: "AWS::ElasticLoadBalancingV2::LoadBalancer"
+    Properties:
+        Name: !Ref LoadBalancerName
+        Type: application
+        Subnets: !Ref Subnets
+        Scheme: internet-facing
+        SecurityGroups:
+            - !Ref SecurityGroup
+        IpAddressType: "ipv4"
+        LoadBalancerAttributes: 
+              - 
+                Key: "access_logs.s3.enabled"
+                Value: "false"
+              - 
+                Key: "idle_timeout.timeout_seconds"
+                Value: "3600"
+              - 
+                Key: "deletion_protection.enabled"
+                Value: "true"
+              - 
+                Key: "routing.http2.enabled"
+                Value: "true"
+              - 
+                Key: "routing.http.drop_invalid_header_fields.enabled"
+                Value: "false"
+              - 
+                Key: "routing.http.desync_mitigation_mode"
+                Value: "defensive"
+              - 
+                Key: "waf.fail_open.enabled"
+                Value: "false"
+
+        Tags:
+        - Key: Name
+          Value: !Ref EnvironmentName
+
+  LoadBalancerListener:
+        Type: "AWS::ElasticLoadBalancingV2::Listener"
+        Properties:
+            LoadBalancerArn: !Ref LoadBalancer
+            Port: 443
+            Protocol: "HTTPS"
+            SslPolicy: "ELBSecurityPolicy-2016-08"
+            Certificates: 
+              - 
+                CertificateArn: !Ref CertificateARN
+            DefaultActions: 
+              - 
+                Order: 1
+                TargetGroupArn: !Ref TargetGroup
+                Type: "forward"
+
+  TargetGroup:
+        Type: "AWS::ElasticLoadBalancingV2::TargetGroup"
+        Properties:
+            HealthCheckIntervalSeconds: 10
+            HealthCheckPath: "/"
+            Port: 80
+            Protocol: "HTTP"
+            HealthCheckPort: "80"
+            HealthCheckProtocol: "HTTP"
+            HealthCheckTimeoutSeconds: 5
+            UnhealthyThresholdCount: 10
+            TargetType: "instance"
+            Matcher: 
+                HttpCode: "200"
+            HealthyThresholdCount: 3
+            VpcId: !Ref VPC
+            Name: !Ref TargetGroupName
+            HealthCheckEnabled: true
+            TargetGroupAttributes: 
+              - 
+                Key: "stickiness.enabled"
+                Value: "true"
+              - 
+                Key: "deregistration_delay.timeout_seconds"
+                Value: "300"
+              - 
+                Key: "stickiness.app_cookie.cookie_name"
+                Value: ""
+              - 
+                Key: "stickiness.type"
+                Value: "lb_cookie"
+              - 
+                Key: "stickiness.lb_cookie.duration_seconds"
+                Value: "86400"
+              - 
+                Key: "slow_start.duration_seconds"
+                Value: "0"
+              - 
+                Key: "stickiness.app_cookie.duration_seconds"
+                Value: "86400"
+              - 
+                Key: "load_balancing.algorithm.type"
+                Value: "round_robin"
+            Targets: 
+              - Id: !Ref Server1
+                Port: 80
+              - Id: !Ref Server2
+                Port: 80
+
+
+Outputs:
+  LoadBalancer:
+    Description: A reference to the Application Load Balancer
+    Value: !Ref LoadBalancer
+
+  LoadBalancerUrl:
+    Description: The URL of the ALB
+    Value: !GetAtt LoadBalancer.DNSName
+
+  Listener:
+    Description: A reference to a port 80 listener
+    Value: !Ref LoadBalancerListener
+  
+  TargetGroup:
+        Description: A reference to the target group
+        Value: !Ref TargetGroup
